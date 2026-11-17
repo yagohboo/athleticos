@@ -141,6 +141,8 @@ test('plate quantities persist and offline technique steps remain navigable', as
   await page.evaluate(async () => {
     await navigator.serviceWorker.ready;
   });
+  // An active registration need not control this already-open page; reload into its scope first.
+  await page.reload();
   await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   await page.context().setOffline(true);
   await page.reload();

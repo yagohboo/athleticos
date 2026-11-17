@@ -31,7 +31,7 @@ jobs:
         run: |
           mode="$(tr -d '\r\n' < mode.txt)"
           case "$mode" in
-            full|hosted) printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT" ;;
+            full|recheck|hosted) printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT" ;;
             *) printf 'Unsupported verification mode: %s\n' "$mode" >&2; exit 1 ;;
           esac
 
@@ -63,6 +63,10 @@ jobs:
       - name: Verify published version 2 to 3.1 service-worker upgrade
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
         run: npm run test:upgrade-v2
+
+      - name: Recheck offline technique after service-worker control
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'recheck' }}
+        run: npx playwright test --config playwright.webkit.config.ts e2e/gym-v3.spec.ts --grep 'plate quantities'
 
       - name: Verify published version 3 to 3.1 service-worker upgrade
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
