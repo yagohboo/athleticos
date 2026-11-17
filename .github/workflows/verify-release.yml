@@ -65,9 +65,9 @@ jobs:
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
         run: npm run test:upgrade-v2
 
-      - name: Recheck offline technique after service-worker control
+      - name: Recheck delayed legacy profile draft recovery
         if: ${{ !cancelled() && steps.mode.outputs.value == 'recheck' }}
-        run: npx playwright test --config playwright.webkit.config.ts e2e/gym-v3.spec.ts --grep 'plate quantities'
+        run: npx playwright test --config playwright.webkit.config.ts e2e/reliability-v31.spec.ts --grep 'version3 profile draft'
 
       - name: Verify published version 3 to 3.2 service-worker upgrade
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}

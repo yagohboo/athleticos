@@ -19,53 +19,44 @@ test('discarding an unfinished profile restores saved input and keeps stored rec
 test('a version3 profile draft restores through the collapsed section and saves under its new identity', async ({
   page,
 }) => {
-  await page.goto('/#/profile?section=personal');
-  const input = page.getByLabel('Your name', { exact: true });
-  await input.fill('Retain my version3 draft');
-  await input.press('Tab');
-  await expect(page.locator('.draft-recovery summary')).toContainText('1 unfinished');
-  // Reproduce the exact heading/ordered-field identity used by the shipped3.0 editor.
+  // Seed the shipped 3.0 heading/ordered-field identity without loading Profile.
+  // WebKit may reuse that module across a reload, bypassing a gate installed later.
+  // The identity below matches the actual published Profile-8e-AqdXm.js editor.
+  await page.goto('/#/');
+  await expect(page.locator('.reliability-strip')).toBeVisible();
   await page.evaluate(
     () =>
       new Promise<void>((resolve, reject) => {
-        const form = document
-          .querySelector<HTMLInputElement>('input[aria-label="Your name"]')!
-          .closest('form')!;
         const fields = [
-          ...form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
-            'input,select,textarea',
-          ),
-        ].filter(
-          (field) =>
-            !['password', 'file', 'hidden', 'submit', 'button'].includes(field.type) &&
-            !field.closest('[data-no-draft]'),
-        );
-        const keys = fields.map(
-          (field, index) =>
-            `${field.name || field.getAttribute('aria-label') || field.closest('label')?.textContent?.trim().slice(0, 100) || field.tagName}:${index}`,
-        );
-        const heading = form.closest('section')!.querySelector('h2,h3')!.textContent!.trim();
+          ['name', 'Retain my version3 draft'],
+          ['sex', 'Male'],
+          ['height', '70'],
+          ['startingWeight', '220'],
+          ['goalWeight', '220'],
+          ['benchMax', '175'],
+          ['gym', 'Planet Fitness'],
+          ['trainingExperience', 'Some resistance-training experience'],
+          ['lifestyle', 'Substantial time sitting at a computer or desk'],
+          ['stepBaseline', '2300'],
+          ['stepBaselineVerified', 'no'],
+          ['frequency', '4'],
+          ['split', 'Upper/Lower'],
+          ['equipment', 'Dumbbells\nStrength machines'],
+          ['goals', 'Get stronger'],
+        ];
+        const keys = fields.map(([name], index) => `${name}:${index}`);
         const request = indexedDB.open('AthleticOS');
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
           const database = request.result,
             transaction = database.transaction('drafts', 'readwrite');
-          const store = transaction.objectStore('drafts'),
-            query = store.getAll();
-          query.onsuccess = () => {
-            const record = query.result.find((row) => row.values['name:0'] === 'Retain my version3 draft');
-            if (!record) {
-              transaction.abort();
-              return;
-            }
-            store.delete(record.id);
-            delete record.values.__athleticos_display_units;
-            store.put({
-              ...record,
-              route: '#/profile',
-              id: JSON.stringify(['#/profile', `${heading}|${keys.join('|')}`]),
-            });
-          };
+          transaction.objectStore('drafts').put({
+            id: JSON.stringify(['#/profile', `Personal profile|${keys.join('|')}`]),
+            route: '#/profile',
+            label: 'Personal profile',
+            values: Object.fromEntries(fields.map(([, value], index) => [keys[index], value])),
+            updatedAt: '2026-11-13T12:00:00.000Z',
+          });
           transaction.oncomplete = () => {
             database.close();
             resolve();
@@ -77,17 +68,20 @@ test('a version3 profile draft restores through the collapsed section and saves 
         };
       }),
   );
-  await page.goto('/#/profile');
   // Force the real lazy page to finish after a fast Restore tap. The recovery
   // strip is available before the Profile chunk/editor on a slower connection.
+  const input = page.getByLabel('Your name', { exact: true });
+  let interceptedEditor = false;
   let releaseEditor = () => {};
   const editorGate = new Promise<void>((resolve) => (releaseEditor = resolve));
   await page.route('**/assets/Profile-*.js', async (route) => {
+    interceptedEditor = true;
     await editorGate;
     await route.continue();
   });
   try {
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.goto('/#/profile', { waitUntil: 'domcontentloaded' });
+    await expect.poll(() => interceptedEditor).toBe(true);
     await expect(page.locator('.draft-recovery summary')).toContainText('1 unfinished');
     await expect(input).toHaveCount(0);
     await page.locator('.draft-recovery summary').click();
