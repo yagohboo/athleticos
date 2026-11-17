@@ -57,6 +57,10 @@ test('walking coverage and manual sitting reminders persist without passive dete
   await page.clock.install({ time: new Date('2026-11-13T17:00:00Z') });
   await page.goto('/#/health?tab=movement');
   await expect(page.getByRole('button', { name: 'Start sitting session', exact: true })).toBeVisible();
+  await page.getByText('Reminder and walking settings', { exact: true }).click();
+  await page.getByLabel('Movement reminders', { exact: true }).selectOption('yes');
+  await page.getByRole('button', { name: 'Save movement settings', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save movement settings', exact: true })).toBeEnabled();
   const walking = page
     .locator('section')
     .filter({ has: page.getByRole('heading', { name: 'Record daily steps', exact: true }) });

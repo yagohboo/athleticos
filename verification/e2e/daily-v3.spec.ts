@@ -7,6 +7,14 @@ const section = (page: Page, title: string) =>
     .filter({ has: page.getByRole('heading', { name: title, exact: true }) })
     .last();
 
+async function chooseNutritionTargets(page: Page) {
+  await page.goto('/#/profile?section=settings');
+  await page.getByLabel('Daily calorie target (editable estimate)', { exact: true }).fill('2500');
+  await page.getByLabel('Daily protein target (g)', { exact: true }).fill('190');
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Save settings', exact: true })).toBeEnabled();
+}
+
 test('daily drafts restore only to the same date or ingredient record', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-11-14T17:00:00Z'));
   await page.goto('/#/health');
@@ -127,6 +135,7 @@ test('compact check-in persists, tolerance has editable history and a launched w
 test('ingredient recipes restore unfinished rows, calculate actual cooked portions and combine scaled shopping weights', async ({
   page,
 }) => {
+  await chooseNutritionTargets(page);
   await page.goto('/#/progress?tab=nutrition');
   await page.getByText('Ingredient recipes, weighed portions and meal prep', { exact: true }).click();
   await page.getByText('Ingredient pantry: create or edit label values', { exact: true }).click();
@@ -214,6 +223,7 @@ test('multiweek target proposal requires a separate approval and preserves food 
   page,
 }) => {
   await page.clock.setFixedTime(new Date('2026-11-14T17:00:00Z'));
+  await chooseNutritionTargets(page);
   await page.goto('/#/progress?tab=nutrition');
   await page.getByText('Review nutrition and adjust targets', { exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Four-week nutrition review', exact: true })).toBeVisible();

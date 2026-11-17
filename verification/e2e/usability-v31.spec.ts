@@ -42,7 +42,7 @@ test('closing a settings section preserves typed fields and deep links open upda
   await page.getByRole('button', { name: 'Save profile', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Still here while folded', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'App updates', exact: true }).click();
-  await expect(page.getByText('AthleticOS 3.1.0', { exact: true })).toBeVisible();
+  await expect(page.getByText('AthleticOS 3.2.0', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check for updates', exact: true })).toBeVisible();
   await expect(name).not.toBeVisible();
 });

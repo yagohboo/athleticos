@@ -66,6 +66,7 @@ test('warmup ramps, confirmed quick entry, measured rest and focused mode surviv
   await page.getByRole('button', { name: 'Focus on next set', exact: true }).click();
   let row = page.locator('form.set-editor:visible').first();
   await expect(page.locator('form.set-editor:visible')).toHaveCount(1);
+  await row.getByRole('button', { name: 'Set details', exact: false }).click();
   await row.getByRole('button', { name: 'Start this set', exact: true }).click();
   await row.locator('summary').filter({ hasText: 'Quick text log' }).click();
   await row.getByLabel('Quick set text').fill('40 x 8, 4 RIR');
@@ -74,6 +75,7 @@ test('warmup ramps, confirmed quick entry, measured rest and focused mode surviv
   await page.getByLabel('Dismiss timer', { exact: true }).click();
   row = page.locator('form.set-editor:visible').first();
   await expect(row).toContainText('Set 2');
+  await row.getByRole('button', { name: 'Set details', exact: false }).click();
   await row.getByRole('button', { name: 'Start this set', exact: true }).click();
   await expect(row).toContainText('Rest before this set:');
   await page.reload();

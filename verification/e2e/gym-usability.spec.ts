@@ -72,6 +72,15 @@ test('Train opens today’s completed session instead of suggesting a duplicate 
   await page.getByRole('button', { name: 'Finish', exact: true }).click();
   await page.getByRole('button', { name: 'Finish & save session', exact: true }).click();
   await expect(page.getByText('Work put in. Progress earned.', { exact: true })).toBeVisible();
+  // Fresh installs have no selected program. Choosing the existing starter
+  // through its normal editor must activate it without changing saved sessions.
+  await page.goto('/#/schedule');
+  await page.getByRole('button', { name: 'Edit program', exact: true }).click();
+  const programChoice = page.getByRole('combobox', { name: 'Active training program', exact: true });
+  await expect(programChoice).toHaveValue('');
+  await programChoice.selectOption('planet-fitness');
+  await expect(programChoice).toHaveValue('planet-fitness');
+  await expect(programChoice).toBeEnabled();
   await page.goto('/#/train');
   await expect(page.getByRole('link', { name: 'View completed session', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'View completed session', exact: true }).click();

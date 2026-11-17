@@ -9,8 +9,17 @@ import path from 'node:path';
 import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
 import { chromium, webkit, devices, expect } from '@playwright/test';
 
-const fromV3 = process.argv.includes('--from-v3');
-const oldRoot = path.resolve(fromV3 ? 'artifacts/baseline-v3' : 'artifacts/baseline-v2');
+const fromV31 = process.argv.includes('--from-v31');
+const fromV3 = process.argv.includes('--from-v3') || fromV31;
+assert(!(fromV31 && process.argv.includes('--from-v3')), 'Choose one historical baseline.');
+const chromiumOnly = process.argv.includes('--chromium-only');
+const webkitOnly = process.argv.includes('--webkit-only');
+assert(!(chromiumOnly && webkitOnly), 'Choose one engine restriction or neither for both engines.');
+const sourceVersion = fromV31 ? '3.1.0' : fromV3 ? '3.0.0' : '2.0.0';
+const targetVersion = '3.2.0';
+const oldRoot = path.resolve(
+  fromV31 ? 'artifacts/baseline-v31' : fromV3 ? 'artifacts/baseline-v3' : 'artifacts/baseline-v2',
+);
 const newRoot = path.resolve('dist');
 await stat(path.join(oldRoot, 'sw.js'));
 await stat(path.join(newRoot, 'sw.js'));
@@ -62,6 +71,21 @@ const base = `http://127.0.0.1:${server.address().port}/athleticos/`;
 const check = expect.configure({ timeout: 20000 });
 const results = [];
 
+async function selectBench(page) {
+  // Newer releases default to one visible set; reveal saved rows through the real control.
+  const exercise = page.locator('.exercise-rail-item').filter({ hasText: 'Smith Machine Bench Press' });
+  await exercise.waitFor({ state: 'attached' });
+  const showAll = page.getByRole('button', { name: 'Show all sets', exact: true });
+  if (await showAll.isVisible()) {
+    await showAll.click();
+    await check(exercise).toBeVisible();
+  } else if (!(await exercise.isVisible())) {
+    const plan = page.locator('.session-plan-disclosure > summary');
+    if (await plan.isVisible()) await plan.click();
+  }
+  await exercise.click();
+}
+
 async function readDatabase(page) {
   return page.evaluate(
     () =>
@@ -97,7 +121,7 @@ async function verify(label, type, device) {
   page.setDefaultTimeout(20000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  const report = { browser: label, passed: false, checks: [] };
+  const report = { browser: label, sourceVersion, targetVersion, passed: false, checks: [] };
   try {
     await page.goto(`${base}#/workout?template=upper-a`);
     await page.evaluate(async () => {
@@ -106,7 +130,7 @@ async function verify(label, type, device) {
     await page.reload();
     await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
     await page.getByRole('button', { name: 'Start this workout', exact: true }).click();
-    await page.locator('.exercise-rail-item').filter({ hasText: 'Smith Machine Bench Press' }).click();
+    await selectBench(page);
     await page.getByLabel('Set 1 weight', { exact: true }).fill('100');
     await page.getByLabel('Set 1 reps', { exact: true }).fill('6');
     await page
@@ -115,7 +139,7 @@ async function verify(label, type, device) {
       .getByRole('button', { name: 'Complete set', exact: true })
       .click();
     await check(page.locator('.saved-set').first()).toContainText('100 lb × 6 reps');
-    // Fixture writes touch only this disposable browser, using the published v2 database.
+    // Fixture writes touch only this disposable browser using the selected published baseline.
     await page.evaluate(
       () =>
         new Promise((resolve, reject) => {
@@ -172,7 +196,7 @@ async function verify(label, type, device) {
     assert.equal(before.version, fromV3 ? 60 : 50, 'Fixture must use the previously published database.');
     const originalSessionId = before.tables.sessions.find((row) => row.status === 'active').id;
     report.checks.push(
-      `Published ${fromV3 ? 'v3' : 'v2'} saved workout, customized profile/program, measurement, meal and photo`,
+      `Published ${sourceVersion} saved workout, customized profile/program, measurement, meal and photo`,
     );
     stage = 'new';
     await page.evaluate(async () => {
@@ -186,13 +210,15 @@ async function verify(label, type, device) {
       await page.getByRole('button', { name: 'Finish', exact: true }).click();
       await page.getByRole('button', { name: 'Finish & save session', exact: true }).click();
       await check(page.getByRole('button', { name: 'Finish', exact: true })).toHaveCount(0);
-      // Keep a real v3 unfinished profile draft across the upgrade; no new unsaved input is active now.
-      await page.goto(`${base}#/profile`);
-      await page.getByLabel('Your name', { exact: true }).fill('Preserved unfinished v3 profile');
+      // Keep an actual old-release draft, including its original field keys, across the update.
+      await page.goto(`${base}#/profile${fromV31 ? '?section=personal' : ''}`);
+      await page
+        .getByLabel('Your name', { exact: true })
+        .fill(`Preserved unfinished ${sourceVersion} profile`);
       await check(page.locator('.draft-recovery summary')).toContainText('unfinished');
       await page.goto(`${base}#/workout?session=${originalSessionId}`);
       before = await readDatabase(page);
-      report.checks.push('Previously published v3 correctly defers while a workout is active');
+      report.checks.push(`Previously published ${sourceVersion} correctly defers while a workout is active`);
     }
     await check(page.getByRole('button', { name: 'Update app', exact: true })).toBeVisible();
     await Promise.all([
@@ -216,18 +242,17 @@ async function verify(label, type, device) {
       await page.locator('.draft-recovery summary').click();
       await page.getByRole('button', { name: 'Restore draft', exact: true }).click();
       await check(page.getByLabel('Your name', { exact: true })).toHaveValue(
-        'Preserved unfinished v3 profile',
+        `Preserved unfinished ${sourceVersion} profile`,
       );
       await page.getByRole('button', { name: 'Discard draft', exact: true }).click();
       await check(page.getByLabel('Your name', { exact: true })).toHaveValue('Upgrade retention athlete');
       report.checks.push(
-        'A real 3.0 profile draft restores inside the reorganized profile and discards safely',
+        `A real ${sourceVersion} profile draft restores inside the reorganized profile and discards safely`,
       );
       await page.goto(`${base}#/workout?template=upper-a`);
       await page.getByRole('button', { name: 'Start this workout', exact: true }).click();
       await check(page.getByRole('button', { name: 'Finish', exact: true })).toBeVisible();
-      await page.getByRole('button', { name: 'Show all sets', exact: true }).click();
-      await page.locator('.exercise-rail-item').filter({ hasText: 'Smith Machine Bench Press' }).click();
+      await selectBench(page);
       await page.getByLabel('Set 1 weight', { exact: true }).fill('100');
       await page.getByLabel('Set 1 reps', { exact: true }).fill('6');
       await page
@@ -238,20 +263,18 @@ async function verify(label, type, device) {
       await check(page.locator('.saved-set').first()).toContainText('100 lb × 6 reps');
     }
     const retainedSetCount = (await readDatabase(page)).tables.sets.length;
-    const showAllSets = page.getByRole('button', { name: 'Show all sets', exact: true });
-    if (await showAllSets.isVisible()) await showAllSets.click();
-    await page.locator('.exercise-rail-item').filter({ hasText: 'Smith Machine Bench Press' }).click();
+    await selectBench(page);
     await check(page.locator('.saved-set').first()).toContainText('100 lb × 6 reps');
     await context.setOffline(true);
     await page.reload();
-    await page.locator('.exercise-rail-item').filter({ hasText: 'Smith Machine Bench Press' }).click();
+    await selectBench(page);
     await check(page.locator('.saved-set').first()).toContainText('100 lb × 6 reps');
     await check(page.locator('.connection')).toHaveText('Offline');
     report.checks.push('Upgraded installation reloads offline with old workout intact');
     await page.getByLabel('Set 2 reps', { exact: true }).fill('7');
     await check(page.locator('.draft-recovery summary')).toContainText('unfinished');
     await page.reload();
-    await page.locator('.exercise-rail-item').filter({ hasText: 'Smith Machine Bench Press' }).click();
+    await selectBench(page);
     await page.locator('.draft-recovery summary').click();
     await page.getByRole('button', { name: 'Restore draft', exact: true }).first().click();
     await check(page.getByLabel('Set 2 reps', { exact: true })).toHaveValue('7');
@@ -303,7 +326,7 @@ async function verify(label, type, device) {
     );
     await page.goto(`${base}#/profile?section=updates`);
     await check(page.getByRole('heading', { name: 'App updates', exact: true })).toBeVisible();
-    await check(page.getByText('AthleticOS 3.1.0', { exact: true })).toBeVisible();
+    await check(page.getByText(`AthleticOS ${targetVersion}`, { exact: true })).toBeVisible();
     await page.screenshot({ path: path.join(output, `${label}-upgraded.png`), fullPage: true });
     assert.deepEqual(errors, []);
     report.passed = true;
@@ -319,8 +342,8 @@ async function verify(label, type, device) {
   }
 }
 try {
-  await verify('chromium', chromium, { viewport: { width: 390, height: 844 } });
-  await verify('webkit-iphone13', webkit, devices['iPhone 13']);
+  if (!webkitOnly) await verify('chromium', chromium, { viewport: { width: 390, height: 844 } });
+  if (!chromiumOnly) await verify('webkit-iphone13', webkit, devices['iPhone 13']);
 } finally {
   await new Promise((resolve) => server.close(resolve));
 }

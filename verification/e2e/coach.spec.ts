@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
+import { configureAthlete } from './configured-athlete';
 
 test.use({ locale: 'en-US', timezoneId: 'America/New_York' });
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-11-16T17:00:00.000Z'));
+  await configureAthlete(page);
 });
 
 test('Coach decisions require evidence and explicit approval, then persist', async ({ page }) => {

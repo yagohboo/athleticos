@@ -2,7 +2,7 @@ name: Verify AthleticOS release
 
 on:
   push:
-    branches: [codex/verify-v3-1]
+    branches: [codex/verify-v3-2]
 
 permissions:
   contents: read
@@ -50,17 +50,18 @@ jobs:
         working-directory: .
         shell: bash
         run: |
-          mkdir -p verification/dist verification/artifacts/baseline-v2 verification/artifacts/baseline-v3
+          mkdir -p verification/dist verification/artifacts/baseline-v2 verification/artifacts/baseline-v3 verification/artifacts/baseline-v31
           cp -a assets apple-touch-icon.png icon-192.png icon-512.png icon.svg index.html manifest.webmanifest sw.js workbox-2fbc6a65.js verification/dist/
-          test -f verification/dist/assets/index-MuXqYZ7T.js
+          test -f verification/dist/assets/index-DwUJ9pAk.js
           git archive 9f6a0ae365302080fe135a39bd13e61cc0684243 | tar -x -C verification/artifacts/baseline-v2
           git archive c160ec517059cdc29d4fcbd727378b23d8def6fe | tar -x -C verification/artifacts/baseline-v3
+          git archive 03a8abaa42e06f811b7586245420dfaf69f242c2 | tar -x -C verification/artifacts/baseline-v31
 
-      - name: Run all 57 iPhone WebKit browser tests
+      - name: Run all 67 iPhone WebKit browser tests
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
         run: npm run test:webkit
 
-      - name: Verify published version 2 to 3.1 service-worker upgrade
+      - name: Verify published version 2 to 3.2 service-worker upgrade
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
         run: npm run test:upgrade-v2
 
@@ -68,9 +69,13 @@ jobs:
         if: ${{ !cancelled() && steps.mode.outputs.value == 'recheck' }}
         run: npx playwright test --config playwright.webkit.config.ts e2e/gym-v3.spec.ts --grep 'plate quantities'
 
-      - name: Verify published version 3 to 3.1 service-worker upgrade
+      - name: Verify published version 3 to 3.2 service-worker upgrade
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
         run: npm run test:upgrade-v3
+
+      - name: Verify published version 3.1 to 3.2 service-worker upgrade
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
+        run: npm run test:upgrade-v31
 
       - name: Compare every compiled file with the published release
         if: ${{ !cancelled() && steps.mode.outputs.value == 'hosted' }}

@@ -84,7 +84,7 @@ test('deleted measurements can be recovered and the update center reports offlin
   await page.goto('/#/progress?tab=body');
   await expect(weight.getByRole('button', { name: 'Edit 219 lb', exact: true })).toBeVisible();
   await page.goto('/#/profile?section=updates');
-  await expect(page.getByText('AthleticOS 3.1.0', { exact: true })).toBeVisible();
+  await expect(page.getByText('AthleticOS 3.2.0', { exact: true })).toBeVisible();
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
   await expect(

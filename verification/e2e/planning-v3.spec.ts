@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { configureAthlete } from './configured-athlete';
 
 test.use({
   locale: 'en-US',
@@ -7,6 +8,10 @@ test.use({
   ...(process.env.PLANNING_BASE_URL ? { baseURL: process.env.PLANNING_BASE_URL } : {}),
 });
 test.beforeEach(async ({ page }) => {
+  // The configured program existed on Monday; Wednesday's review must not
+  // suggest missed workouts from before the program was created.
+  await page.clock.setFixedTime(new Date('2026-11-16T17:00:00Z'));
+  await configureAthlete(page);
   await page.clock.setFixedTime(new Date('2026-11-18T17:00:00Z'));
 });
 async function rows(page: Page, table: string): Promise<Record<string, unknown>[]> {

@@ -66,6 +66,7 @@ test('profile units persist and JSON backup merge and replacement are explicit',
   await expect(page.getByRole('timer')).toBeVisible();
   await page.goto('/#/profile?section=personal');
   await page.getByLabel('Your name', { exact: true }).fill('Backup Athlete');
+  await page.getByLabel('Profile baseline weight (lb)', { exact: true }).fill('220');
   await page.getByRole('button', { name: 'Save profile', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Backup Athlete', exact: true })).toBeVisible();
   await page.locator('#tool-settings > summary').click();
