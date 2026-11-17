@@ -1,0 +1,16 @@
+{
+  "name": "athleticos-release-verification",
+  "version": "3.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:webkit": "playwright test --config playwright.webkit.config.ts",
+    "test:chromium": "playwright test --config playwright.config.ts",
+    "test:upgrade-v2": "node scripts/check-release-upgrade.mjs",
+    "test:upgrade-v3": "node scripts/check-release-upgrade.mjs --from-v3",
+    "test:hosted": "node scripts/check-static-release.mjs && node scripts/check-hosted-pwa.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
+  }
+}

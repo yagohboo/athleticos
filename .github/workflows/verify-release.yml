@@ -1,0 +1,107 @@
+name: Verify AthleticOS release
+
+on:
+  push:
+    branches: [codex/verify-v3-1]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-athleticos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: verification
+    steps:
+      - name: Check out compiled release and published history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select verification mode
+        id: mode
+        shell: bash
+        run: |
+          mode="$(tr -d '\r\n' < mode.txt)"
+          case "$mode" in
+            full|hosted) printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT" ;;
+            *) printf 'Unsupported verification mode: %s\n' "$mode" >&2; exit 1 ;;
+          esac
+
+      - name: Set up Node 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Install pinned verification dependency
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Install official Chromium and WebKit browsers
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Prepare exact compiled release and historical baselines
+        working-directory: .
+        shell: bash
+        run: |
+          mkdir -p verification/dist verification/artifacts/baseline-v2 verification/artifacts/baseline-v3
+          cp -a assets apple-touch-icon.png icon-192.png icon-512.png icon.svg index.html manifest.webmanifest sw.js workbox-2fbc6a65.js verification/dist/
+          test -f verification/dist/assets/index-MuXqYZ7T.js
+          git archive 9f6a0ae365302080fe135a39bd13e61cc0684243 | tar -x -C verification/artifacts/baseline-v2
+          git archive c160ec517059cdc29d4fcbd727378b23d8def6fe | tar -x -C verification/artifacts/baseline-v3
+
+      - name: Run all 57 iPhone WebKit browser tests
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
+        run: npm run test:webkit
+
+      - name: Verify published version 2 to 3.1 service-worker upgrade
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
+        run: npm run test:upgrade-v2
+
+      - name: Verify published version 3 to 3.1 service-worker upgrade
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
+        run: npm run test:upgrade-v3
+
+      - name: Compare every compiled file with the published release
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'hosted' }}
+        run: node scripts/check-static-release.mjs
+
+      - name: Verify published PWA in Chromium and iPhone WebKit
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'hosted' }}
+        run: node scripts/check-hosted-pwa.mjs
+
+      - name: Print JSON reports to logs and summary
+        if: always()
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { readdir, readFile, appendFile } from 'node:fs/promises';
+          import path from 'node:path';
+          async function reports(directory) {
+            const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
+            const found = [];
+            for (const entry of entries) {
+              const file = path.join(directory, entry.name);
+              if (entry.isDirectory() && !entry.name.startsWith('baseline-')) found.push(...await reports(file));
+              else if (entry.isFile() && /^(report|e2e-webkit)\.json$/.test(entry.name)) found.push(file);
+            }
+            return found;
+          }
+          const files = await reports('artifacts');
+          await appendFile(process.env.GITHUB_STEP_SUMMARY, '# AthleticOS verification\n\nReports use disposable synthetic data. No artifacts or caches are uploaded.\n\n');
+          for (const file of files) {
+            const contents = await readFile(file, 'utf8');
+            console.log(file);
+            console.log(contents);
+            const report = JSON.parse(contents);
+            const summary = report.stats ? { stats: report.stats, errors: report.errors ?? [] } : report;
+            await appendFile(process.env.GITHUB_STEP_SUMMARY, `## ${file}\n\n\x60\x60\x60json\n${JSON.stringify(summary, null, 2)}\n\x60\x60\x60\n\n`);
+          }
+          if (!files.length) await appendFile(process.env.GITHUB_STEP_SUMMARY, 'No browser reports were produced. Check setup and browser-launch logs.\n');
+          NODE
