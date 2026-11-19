@@ -104,7 +104,7 @@ test('bilateral measurements, batch recipes, custom tests and date filters remai
 test('expanded home and five-tab navigation fit a narrow screen', async ({ page }) => {
   await page.goto('/#/');
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.getByRole('heading', { name: 'Create your training plan', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Use original plan', exact: true })).toBeInViewport();
   await expect(page.getByRole('navigation', { name: 'Quick logging', exact: true })).toBeVisible();
   const nav = page.locator('.bottom-nav');
   await expect(nav.getByRole('link')).toHaveCount(5);

@@ -162,6 +162,21 @@ async function verify(name, browserType, options) {
         `Missing offline font ${filename}`,
       );
     }
+    report.checks.push(stage);
+
+    stage = 'open the original plan offline and keep it after reload';
+    const originalName = 'Athletic Strength & Physique — Planet Fitness';
+    await check(page.getByRole('heading', { name: originalName, exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Use original plan', exact: true }).click();
+    await check(page.getByRole('button', { name: 'Use original plan', exact: true })).toHaveCount(0);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.getByRole('button', { name: 'Saved plans', exact: true }).click();
+    const plans = page.getByRole('dialog', { name: 'Saved plans', exact: true });
+    await check(plans.getByRole('button', { name: originalName, exact: true })).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+    await plans.getByRole('button', { name: 'Close dialog' }).click();
     await context.setOffline(false);
     report.checks.push(stage);
 

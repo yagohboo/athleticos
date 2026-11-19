@@ -67,6 +67,23 @@ test('program copies and prescription edits stay separate from the original prog
   await expect(page.locator('.prescription-editor').first().getByLabel('Sets', { exact: true })).toHaveValue(
     '3',
   );
+  await page.goto('/#/train?plans=1');
+  const plans = page.getByRole('dialog', { name: 'Saved plans' });
+  await plans.getByRole('button', { name: 'My strength block', exact: true }).click();
+  const card = page.getByRole('region', { name: 'Workout for today' });
+  await expect(card).toContainText('My Upper A');
+  await expect(card).toContainText('My strength block');
+  await page.reload();
+  await card.getByRole('button', { name: 'Start workout', exact: true }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('My Upper A');
+  const sessionUrl = page.url();
+  await page.goto('/#/train?plans=1');
+  await expect(
+    plans.getByRole('button', { name: 'Athletic Strength & Physique — Planet Fitness', exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press('Escape');
+  await card.getByRole('link', { name: 'Resume session', exact: true }).click();
+  await expect(page).toHaveURL(sessionUrl);
 });
 
 test('one-off rescheduling moves an occurrence and preserves the following week', async ({ page }) => {

@@ -2,7 +2,7 @@ name: Verify AthleticOS release
 
 on:
   push:
-    branches: [codex/verify-v3-3]
+    branches: [codex/verify-v3-3-1]
 
 permissions:
   contents: read
@@ -62,11 +62,12 @@ jobs:
         if: steps.mode.outputs.value != 'hosted'
         working-directory: .
         run: |
-          mkdir -p verification/artifacts/{baseline-v2,baseline-v3,baseline-v31,baseline-v32}
+          mkdir -p verification/artifacts/{baseline-v2,baseline-v3,baseline-v31,baseline-v32,baseline-v33}
           git archive 9f6a0ae365302080fe135a39bd13e61cc0684243 | tar -x -C verification/artifacts/baseline-v2
           git archive c160ec517059cdc29d4fcbd727378b23d8def6fe | tar -x -C verification/artifacts/baseline-v3
           git archive 03a8abaa42e06f811b7586245420dfaf69f242c2 | tar -x -C verification/artifacts/baseline-v31
           git archive 2fc549e5f525dd8466354b2a2908bd30aca1dbd5 | tar -x -C verification/artifacts/baseline-v32
+          git archive d0b24481e0ffa461fa36573535f81c9d63f8e4b7 | tar -x -C verification/artifacts/baseline-v33
 
       - name: Run browser workflows
         if: steps.mode.outputs.value == 'full'
@@ -76,15 +77,15 @@ jobs:
         if: steps.mode.outputs.value == 'recheck'
         run: npm run test:${{ matrix.engine }} -- --test-list recheck-tests.txt
 
-      - name: Recheck 3.2 personalized installation upgrade
+      - name: Check upgrade from the last published release
         if: ${{ !cancelled() && steps.mode.outputs.value == 'recheck' }}
-        run: node scripts/check-release-upgrade.mjs --from-v32 --${{ matrix.engine }}-only
+        run: node scripts/check-release-upgrade.mjs --from-v33 --${{ matrix.engine }}-only
 
-      - name: Verify upgrades from all four published versions
+      - name: Verify upgrades from five published versions
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
         run: |
           result=0
-          for baseline in v2 v3 v31 v32; do
+          for baseline in v2 v3 v31 v32 v33; do
             node scripts/check-release-upgrade.mjs "--from-$baseline" --${{ matrix.engine }}-only || result=1
           done
           exit "$result"

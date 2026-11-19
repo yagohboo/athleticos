@@ -42,34 +42,18 @@ test('a new person chooses a plan, resumes setup, and starts on a non-training d
   await expect(page.locator('.exercise-focus h2')).toHaveText('Goblet Squat');
 });
 
-test('Home and Train start the configured session directly and resume without duplicates', async ({
+test('Home opens the original plan without setup and starts or resumes the same workout', async ({
   page,
 }) => {
   await page.clock.setFixedTime(new Date('2026-11-16T15:00:00Z'));
   await page.goto('/#/');
-  await expect(page.getByRole('link', { name: 'Build my plan', exact: true })).toBeVisible();
-  // A configured existing program, in an isolated test browser.
-  await page.evaluate(async () => {
-    const database = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open('AthleticOS');
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-    await new Promise<void>((resolve, reject) => {
-      const transaction = database.transaction(['settings', 'templates'], 'readwrite');
-      const template = transaction.objectStore('templates').get('upper-a');
-      template.onsuccess = () => {
-        const settings = transaction.objectStore('settings').get('main');
-        settings.onsuccess = () =>
-          transaction
-            .objectStore('settings')
-            .put({ ...settings.result, activeProgramId: template.result.programId });
-      };
-      transaction.oncomplete = () => resolve();
-      transaction.onerror = () => reject(transaction.error);
-    });
-    database.close();
-  });
+  const useOriginal = page.getByRole('button', { name: 'Use original plan', exact: true });
+  await expect(useOriginal).toBeInViewport();
+  await useOriginal.click();
+  const card = page.getByRole('region', { name: 'Workout for today' });
+  await expect(card.getByRole('heading')).toHaveText('Upper A · Power + Strength');
+  await expect(card).toContainText('Athletic Strength & Physique — Planet Fitness');
+  await expect(page).toHaveURL(/#\/$/);
   await page.reload();
   const start = page.getByRole('button', { name: 'Start workout', exact: true });
   await expect(start).toBeInViewport();

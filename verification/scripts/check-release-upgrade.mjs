@@ -14,6 +14,7 @@ const baselines = {
   '--from-v3': { version: '3.0.0', directory: 'baseline-v3' },
   '--from-v31': { version: '3.1.0', directory: 'baseline-v31' },
   '--from-v32': { version: '3.2.0', directory: 'baseline-v32' },
+  '--from-v33': { version: '3.3.0', directory: 'baseline-v33' },
 };
 const requested = process.argv.slice(2).filter((arg) => arg.startsWith('--from-'));
 assert(requested.length <= 1, 'Choose one historical baseline.');
@@ -21,8 +22,8 @@ const baseline = baselines[requested[0] ?? '--from-v2'];
 assert(baseline, 'Unrecognized historical baseline.');
 const sourceVersion = baseline.version;
 const fromV3 = sourceVersion !== '2.0.0';
-const hasFoldedProfile = ['3.1.0', '3.2.0'].includes(sourceVersion);
-const hasPersonalPlans = sourceVersion === '3.2.0';
+const hasFoldedProfile = ['3.1.0', '3.2.0', '3.3.0'].includes(sourceVersion);
+const hasPersonalPlans = ['3.2.0', '3.3.0'].includes(sourceVersion);
 const chromiumOnly = process.argv.includes('--chromium-only');
 const webkitOnly = process.argv.includes('--webkit-only');
 assert(!(chromiumOnly && webkitOnly), 'Choose one engine restriction or neither for both engines.');
