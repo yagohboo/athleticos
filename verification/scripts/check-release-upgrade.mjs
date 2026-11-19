@@ -142,7 +142,7 @@ async function verify(label, type, device) {
       await page.getByRole('button', { name: 'See my plan', exact: true }).click();
       await page.getByRole('button', { name: 'Use this plan', exact: true }).click();
       await page.getByRole('link', { name: 'Back to Home', exact: true }).click();
-      await page.goto(`${base}#/setup`);
+      await page.getByRole('link', { name: 'Personalize my plan', exact: true }).click();
       await page.getByRole('button', { name: /Feel fitter/ }).click();
       await page.getByRole('button', { name: 'Continue', exact: true }).click();
       setupDraftCache = await page.evaluate(() => localStorage.getItem('athleticos:setup-draft:v1'));

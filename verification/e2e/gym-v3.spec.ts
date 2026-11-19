@@ -11,8 +11,12 @@ async function open(page: import('@playwright/test').Page, title: string) {
   if ((await tools.count()) && (await tools.getAttribute('open')) === null)
     await tools.locator(':scope > summary').click();
   const summary = page.locator('summary').filter({ hasText: title }).first();
+  // A summary can be partly on screen behind the fixed phone navigation.
+  await summary.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }));
   await summary.click();
-  return summary.locator('..');
+  const panel = summary.locator('..');
+  await expect(panel).toHaveAttribute('open', '');
+  return panel;
 }
 
 test('time budgets preserve priorities and machine profiles keep exact setup history', async ({ page }) => {

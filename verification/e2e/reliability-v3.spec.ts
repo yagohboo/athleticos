@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import release from '../package.json' with { type: 'json' };
 
 test('unfinished profile form restores after reload and clears only after saving', async ({ page }) => {
   await page.goto('/#/profile?section=personal');
@@ -84,7 +85,7 @@ test('deleted measurements can be recovered and the update center reports offlin
   await page.goto('/#/progress?tab=body');
   await expect(weight.getByRole('button', { name: 'Edit 219 lb', exact: true })).toBeVisible();
   await page.goto('/#/profile?section=updates');
-  await expect(page.getByText('AthleticOS 3.2.0', { exact: true })).toBeVisible();
+  await expect(page.getByText(`AthleticOS ${release.version}`, { exact: true })).toBeVisible();
   await context.setOffline(true);
   await page.getByRole('button', { name: 'Check for updates', exact: true }).click();
   await expect(

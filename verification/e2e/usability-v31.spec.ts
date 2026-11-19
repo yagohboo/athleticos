@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import release from '../package.json' with { type: 'json' };
 
 test('common logs are direct and tool search opens the right settings section', async ({ page }) => {
   await page.goto('/#/');
@@ -42,7 +43,7 @@ test('closing a settings section preserves typed fields and deep links open upda
   await page.getByRole('button', { name: 'Save profile', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Still here while folded', exact: true })).toBeVisible();
   await page.getByRole('link', { name: 'App updates', exact: true }).click();
-  await expect(page.getByText('AthleticOS 3.2.0', { exact: true })).toBeVisible();
+  await expect(page.getByText(`AthleticOS ${release.version}`, { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Check for updates', exact: true })).toBeVisible();
   await expect(name).not.toBeVisible();
 });

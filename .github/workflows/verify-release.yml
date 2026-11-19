@@ -35,7 +35,7 @@ jobs:
         run: |
           mode="$(tr -d '\r\n' < mode.txt)"
           case "$mode" in
-            full|hosted) printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT" ;;
+            full|recheck|hosted) printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT" ;;
             *) printf 'Unsupported verification mode: %s\n' "$mode" >&2; exit 1 ;;
           esac
 
@@ -59,7 +59,7 @@ jobs:
           grep -Fq "./assets/$entry" verification/dist/index.html
 
       - name: Prepare actual released baselines
-        if: steps.mode.outputs.value == 'full'
+        if: steps.mode.outputs.value != 'hosted'
         working-directory: .
         run: |
           mkdir -p verification/artifacts/{baseline-v2,baseline-v3,baseline-v31,baseline-v32}
@@ -71,6 +71,14 @@ jobs:
       - name: Run browser workflows
         if: steps.mode.outputs.value == 'full'
         run: npm run test:${{ matrix.engine }}
+
+      - name: Recheck updated workflow fixtures
+        if: steps.mode.outputs.value == 'recheck'
+        run: npm run test:${{ matrix.engine }} -- --test-list recheck-tests.txt
+
+      - name: Recheck 3.2 personalized installation upgrade
+        if: ${{ !cancelled() && steps.mode.outputs.value == 'recheck' }}
+        run: node scripts/check-release-upgrade.mjs --from-v32 --${{ matrix.engine }}-only
 
       - name: Verify upgrades from all four published versions
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
