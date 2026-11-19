@@ -1,4 +1,4 @@
-/* global navigator, indexedDB */
+/* global navigator, indexedDB, localStorage */
 import { URL } from 'node:url';
 import { Buffer } from 'node:buffer';
 import console from 'node:console';
@@ -9,17 +9,26 @@ import path from 'node:path';
 import { readFile, stat, mkdir, writeFile } from 'node:fs/promises';
 import { chromium, webkit, devices, expect } from '@playwright/test';
 
-const fromV31 = process.argv.includes('--from-v31');
-const fromV3 = process.argv.includes('--from-v3') || fromV31;
-assert(!(fromV31 && process.argv.includes('--from-v3')), 'Choose one historical baseline.');
+const baselines = {
+  '--from-v2': { version: '2.0.0', directory: 'baseline-v2' },
+  '--from-v3': { version: '3.0.0', directory: 'baseline-v3' },
+  '--from-v31': { version: '3.1.0', directory: 'baseline-v31' },
+  '--from-v32': { version: '3.2.0', directory: 'baseline-v32' },
+};
+const requested = process.argv.slice(2).filter((arg) => arg.startsWith('--from-'));
+assert(requested.length <= 1, 'Choose one historical baseline.');
+const baseline = baselines[requested[0] ?? '--from-v2'];
+assert(baseline, 'Unrecognized historical baseline.');
+const sourceVersion = baseline.version;
+const fromV3 = sourceVersion !== '2.0.0';
+const hasFoldedProfile = ['3.1.0', '3.2.0'].includes(sourceVersion);
+const hasPersonalPlans = sourceVersion === '3.2.0';
 const chromiumOnly = process.argv.includes('--chromium-only');
 const webkitOnly = process.argv.includes('--webkit-only');
 assert(!(chromiumOnly && webkitOnly), 'Choose one engine restriction or neither for both engines.');
-const sourceVersion = fromV31 ? '3.1.0' : fromV3 ? '3.0.0' : '2.0.0';
-const targetVersion = '3.2.0';
-const oldRoot = path.resolve(
-  fromV31 ? 'artifacts/baseline-v31' : fromV3 ? 'artifacts/baseline-v3' : 'artifacts/baseline-v2',
-);
+const targetVersion = JSON.parse(await readFile('package.json', 'utf8')).version;
+assert.notEqual(sourceVersion, targetVersion, 'Historical baseline and target release must differ.');
+const oldRoot = path.resolve('artifacts', baseline.directory);
 const newRoot = path.resolve('dist');
 await stat(path.join(oldRoot, 'sw.js'));
 await stat(path.join(newRoot, 'sw.js'));
@@ -35,6 +44,7 @@ const mime = {
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',
+  '.webp': 'image/webp',
 };
 const server = http.createServer(async (request, response) => {
   try {
@@ -123,6 +133,21 @@ async function verify(label, type, device) {
   page.on('pageerror', (error) => errors.push(error.message));
   const report = { browser: label, sourceVersion, targetVersion, passed: false, checks: [] };
   try {
+    let setupDraftCache;
+    if (hasPersonalPlans) {
+      await page.goto(`${base}#/setup`);
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
+      await page.getByRole('button', { name: 'Dumbbells Not selected', exact: true }).click();
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
+      await page.getByRole('button', { name: 'See my plan', exact: true }).click();
+      await page.getByRole('button', { name: 'Use this plan', exact: true }).click();
+      await page.getByRole('link', { name: 'Back to Home', exact: true }).click();
+      await page.goto(`${base}#/setup`);
+      await page.getByRole('button', { name: /Feel fitter/ }).click();
+      await page.getByRole('button', { name: 'Continue', exact: true }).click();
+      setupDraftCache = await page.evaluate(() => localStorage.getItem('athleticos:setup-draft:v1'));
+      assert.equal(JSON.parse(setupDraftCache).draft.answers.goal, 'fitness');
+    }
     await page.goto(`${base}#/workout?template=upper-a`);
     await page.evaluate(async () => {
       await navigator.serviceWorker.ready;
@@ -211,7 +236,7 @@ async function verify(label, type, device) {
       await page.getByRole('button', { name: 'Finish & save session', exact: true }).click();
       await check(page.getByRole('button', { name: 'Finish', exact: true })).toHaveCount(0);
       // Keep an actual old-release draft, including its original field keys, across the update.
-      await page.goto(`${base}#/profile${fromV31 ? '?section=personal' : ''}`);
+      await page.goto(`${base}#/profile${hasFoldedProfile ? '?section=personal' : ''}`);
       await page
         .getByLabel('Your name', { exact: true })
         .fill(`Preserved unfinished ${sourceVersion} profile`);
@@ -236,6 +261,27 @@ async function verify(label, type, device) {
     report.checks.push(
       `True service-worker replacement preserved all ${Object.keys(before.tables).filter((name) => name !== 'recoverySnapshots').length} original data tables exactly`,
     );
+    if (hasPersonalPlans) {
+      const plan = after.tables.features.find((row) => row.id === 'personal-setup:main').data;
+      const draft = after.tables.features.find((row) => row.id === 'personal-setup-draft:main').data;
+      assert.equal(after.tables.settings.find((row) => row.id === 'main').activeProgramId, plan.programId);
+      assert(
+        after.tables.templates.some(
+          (row) => row.id === plan.firstTemplateId && row.programId === plan.programId,
+        ),
+      );
+      assert.equal(draft.answers.goal, 'fitness');
+      assert.equal(draft.step, 1);
+      assert.equal(
+        await page.evaluate(() => localStorage.getItem('athleticos:setup-draft:v1')),
+        setupDraftCache,
+      );
+      await page.goto(`${base}#/setup`);
+      await check(page.getByRole('button', { name: /^Dumbbells/ })).toHaveAttribute('aria-pressed', 'true');
+      report.checks.push(
+        'Active personalized program, original templates and unfinished setup reopen after upgrade',
+      );
+    }
     if (fromV3) {
       await page.goto(`${base}#/profile?section=personal`);
       await check(page.getByLabel('Your name', { exact: true })).toBeVisible();

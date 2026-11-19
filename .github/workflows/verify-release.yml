@@ -2,7 +2,7 @@ name: Verify AthleticOS release
 
 on:
   push:
-    branches: [codex/verify-v3-2]
+    branches: [codex/verify-v3-3]
 
 permissions:
   contents: read
@@ -13,79 +13,83 @@ concurrency:
 
 jobs:
   verify:
+    name: Verify ${{ matrix.engine }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
     defaults:
       run:
         working-directory: verification
     steps:
       - name: Check out compiled release and published history
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           fetch-depth: 0
           persist-credentials: false
 
       - name: Select verification mode
         id: mode
-        shell: bash
         run: |
           mode="$(tr -d '\r\n' < mode.txt)"
           case "$mode" in
-            full|recheck|hosted) printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT" ;;
+            full|hosted) printf 'value=%s\n' "$mode" >> "$GITHUB_OUTPUT" ;;
             *) printf 'Unsupported verification mode: %s\n' "$mode" >&2; exit 1 ;;
           esac
 
       - name: Set up Node 24
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
 
-      - name: Install pinned verification dependency
-        run: npm ci --ignore-scripts --no-audit --no-fund
-
-      - name: Install official Chromium and WebKit browsers
-        run: npx playwright install --with-deps chromium webkit
-
-      - name: Prepare exact compiled release and historical baselines
-        working-directory: .
-        shell: bash
+      - name: Install verification dependencies and browser
         run: |
-          mkdir -p verification/dist verification/artifacts/baseline-v2 verification/artifacts/baseline-v3 verification/artifacts/baseline-v31
-          cp -a assets apple-touch-icon.png icon-192.png icon-512.png icon.svg index.html manifest.webmanifest sw.js workbox-2fbc6a65.js verification/dist/
-          test -f verification/dist/assets/index-DwUJ9pAk.js
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps ${{ matrix.engine }}
+
+      - name: Prepare compiled release and verify entry point
+        working-directory: .
+        run: |
+          mkdir -p verification/dist
+          cp -a assets apple-touch-icon.png icon-192.png icon-512.png icon.svg font-licenses.txt index.html manifest.webmanifest sw.js workbox-*.js verification/dist/
+          entry="$(tr -d '\r\n' < verification/release-entry.txt)"
+          test -f "verification/dist/assets/$entry"
+          grep -Fq "./assets/$entry" verification/dist/index.html
+
+      - name: Prepare actual released baselines
+        if: steps.mode.outputs.value == 'full'
+        working-directory: .
+        run: |
+          mkdir -p verification/artifacts/{baseline-v2,baseline-v3,baseline-v31,baseline-v32}
           git archive 9f6a0ae365302080fe135a39bd13e61cc0684243 | tar -x -C verification/artifacts/baseline-v2
           git archive c160ec517059cdc29d4fcbd727378b23d8def6fe | tar -x -C verification/artifacts/baseline-v3
           git archive 03a8abaa42e06f811b7586245420dfaf69f242c2 | tar -x -C verification/artifacts/baseline-v31
+          git archive 2fc549e5f525dd8466354b2a2908bd30aca1dbd5 | tar -x -C verification/artifacts/baseline-v32
 
-      - name: Run all 67 iPhone WebKit browser tests
+      - name: Run browser workflows
+        if: steps.mode.outputs.value == 'full'
+        run: npm run test:${{ matrix.engine }}
+
+      - name: Verify upgrades from all four published versions
         if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
-        run: npm run test:webkit
+        run: |
+          result=0
+          for baseline in v2 v3 v31 v32; do
+            node scripts/check-release-upgrade.mjs "--from-$baseline" --${{ matrix.engine }}-only || result=1
+          done
+          exit "$result"
 
-      - name: Verify published version 2 to 3.2 service-worker upgrade
-        if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
-        run: npm run test:upgrade-v2
-
-      - name: Recheck delayed legacy profile draft recovery
-        if: ${{ !cancelled() && steps.mode.outputs.value == 'recheck' }}
-        run: npx playwright test --config playwright.webkit.config.ts e2e/reliability-v31.spec.ts --grep 'version3 profile draft'
-
-      - name: Verify published version 3 to 3.2 service-worker upgrade
-        if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
-        run: npm run test:upgrade-v3
-
-      - name: Verify published version 3.1 to 3.2 service-worker upgrade
-        if: ${{ !cancelled() && steps.mode.outputs.value == 'full' }}
-        run: npm run test:upgrade-v31
-
-      - name: Compare every compiled file with the published release
-        if: ${{ !cancelled() && steps.mode.outputs.value == 'hosted' }}
+      - name: Compare current and historical files with the published site
+        if: steps.mode.outputs.value == 'hosted' && matrix.engine == 'chromium'
         run: node scripts/check-static-release.mjs
 
-      - name: Verify published PWA in Chromium and iPhone WebKit
+      - name: Verify published offline app
         if: ${{ !cancelled() && steps.mode.outputs.value == 'hosted' }}
-        run: node scripts/check-hosted-pwa.mjs
+        run: node scripts/check-hosted-pwa.mjs --${{ matrix.engine }}-only
 
-      - name: Print JSON reports to logs and summary
+      - name: Print verification reports
         if: always()
         shell: bash
         run: |
@@ -93,24 +97,18 @@ jobs:
           import { readdir, readFile, appendFile } from 'node:fs/promises';
           import path from 'node:path';
           async function reports(directory) {
-            const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
-            const found = [];
-            for (const entry of entries) {
-              const file = path.join(directory, entry.name);
-              if (entry.isDirectory() && !entry.name.startsWith('baseline-')) found.push(...await reports(file));
-              else if (entry.isFile() && /^(report|e2e-webkit)\.json$/.test(entry.name)) found.push(file);
+            const files = [];
+            for (const item of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
+              const location = path.join(directory, item.name);
+              if (item.isDirectory() && !item.name.startsWith('baseline-')) files.push(...await reports(location));
+              if (item.isFile() && /^(report|e2e-(webkit|chromium))\.json$/.test(item.name)) files.push(location);
             }
-            return found;
+            return files;
           }
-          const files = await reports('artifacts');
-          await appendFile(process.env.GITHUB_STEP_SUMMARY, '# AthleticOS verification\n\nReports use disposable synthetic data. No artifacts or caches are uploaded.\n\n');
-          for (const file of files) {
-            const contents = await readFile(file, 'utf8');
-            console.log(file);
-            console.log(contents);
-            const report = JSON.parse(contents);
-            const summary = report.stats ? { stats: report.stats, errors: report.errors ?? [] } : report;
-            await appendFile(process.env.GITHUB_STEP_SUMMARY, `## ${file}\n\n\x60\x60\x60json\n${JSON.stringify(summary, null, 2)}\n\x60\x60\x60\n\n`);
+          for (const file of await reports('artifacts')) {
+            const result = JSON.parse(await readFile(file, 'utf8'));
+            const summary = result.stats ? { stats: result.stats, errors: result.errors } : result;
+            console.log(file, JSON.stringify(summary, null, 2));
+            await appendFile(process.env.GITHUB_STEP_SUMMARY, '\n**' + file + '**\n\n    ' + JSON.stringify(summary) + '\n');
           }
-          if (!files.length) await appendFile(process.env.GITHUB_STEP_SUMMARY, 'No browser reports were produced. Check setup and browser-launch logs.\n');
           NODE

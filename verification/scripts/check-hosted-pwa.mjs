@@ -1,4 +1,4 @@
-/* global document, window, navigator, localStorage, Image */
+/* global document, window, navigator, localStorage, caches, Image */
 // Uses disposable browser contexts only. No sign-in, user profile, or remote data writes.
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -9,10 +9,16 @@ import { URL } from 'node:url';
 import { chromium, webkit, devices, expect } from '@playwright/test';
 
 if (process.argv.includes('--help')) {
-  console.log('Usage: node scripts/check-hosted-pwa.mjs [https://host/athleticos/]');
+  console.log(
+    'Usage: node scripts/check-hosted-pwa.mjs [https://host/athleticos/] [--chromium-only|--webkit-only]',
+  );
   process.exit(0);
 }
-const base = new URL(process.argv[2] ?? 'https://yagohboo.github.io/athleticos/');
+const args = process.argv.slice(2);
+const chromiumOnly = args.includes('--chromium-only');
+const webkitOnly = args.includes('--webkit-only');
+assert(!(chromiumOnly && webkitOnly), 'Choose one engine restriction or neither for both engines.');
+const base = new URL(args.find((arg) => !arg.startsWith('--')) ?? 'https://yagohboo.github.io/athleticos/');
 assert.equal(base.protocol, 'https:', 'Hosted verification requires HTTPS.');
 assert(!base.username && !base.password, 'Use an anonymous URL without credentials.');
 base.hash = '';
@@ -53,7 +59,7 @@ async function verify(name, browserType, options) {
     assert.equal(new URL(page.url()).origin, base.origin, 'Unexpected redirect to a different host.');
     assert.equal(new URL(page.url()).pathname, base.pathname, 'Unexpected deployment path.');
     assert(await page.evaluate(() => window.isSecureContext), 'Page is not a secure context.');
-    await check(page.getByRole('heading', { name: 'Your next level.', exact: true })).toBeVisible();
+    await check(page.getByRole('heading', { name: 'Today', exact: true })).toBeVisible();
     await checkLayout();
     report.checks.push(stage);
 
@@ -106,6 +112,59 @@ async function verify(name, browserType, options) {
     await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
     report.checks.push(stage);
 
+    stage = 'home and training photograph load offline';
+    await context.setOffline(true);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await check(page.getByRole('heading', { name: 'Today', level: 1, exact: true })).toBeVisible();
+    const photo = page.locator('.today-workout-photo');
+    await check(photo).toBeVisible();
+    const imageUrl = await photo.evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      const source = style.backgroundImage.match(/url\(["']?([^"')]+)["']?\)/);
+      return source?.[1];
+    });
+    assert(
+      imageUrl && new URL(imageUrl).href.startsWith(base.href),
+      'Expected a bundled training photograph.',
+    );
+    const photoSize = await page.evaluate(async (src) => {
+      const cached = await caches.match(src, { ignoreSearch: true });
+      if (!cached?.ok) throw new Error('The training photograph is missing from offline storage.');
+      const image = new Image();
+      image.src = src;
+      await image.decode();
+      return [image.naturalWidth, image.naturalHeight];
+    }, imageUrl);
+    assert(
+      photoSize.every((dimension) => dimension > 0),
+      'The offline training photograph did not decode.',
+    );
+    report.checks.push(stage);
+
+    stage = 'bundled fonts load offline';
+    const fonts = await page.evaluate(async () => {
+      const families = await Promise.all(
+        Array.from(document.fonts, async (face) => (await face.load()).family),
+      );
+      const fontFiles = [];
+      for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+        for (const request of await cache.keys()) {
+          if (new URL(request.url).pathname.endsWith('.woff2')) fontFiles.push(new URL(request.url).pathname);
+        }
+      }
+      return { families, fontFiles };
+    });
+    assert(new Set(fonts.families).size >= 2, 'Both display and body font families must load offline.');
+    for (const filename of ['dm-sans-latin-wght-normal', 'dm-serif-display-latin-400-normal']) {
+      assert(
+        fonts.fontFiles.some((file) => file.includes(filename)),
+        `Missing offline font ${filename}`,
+      );
+    }
+    await context.setOffline(false);
+    report.checks.push(stage);
+
     stage = 'save workout set and running timer';
     await page.goto(url('/workout?template=upper-a'));
     await page.getByRole('button', { name: 'Start this workout', exact: true }).click();
@@ -155,7 +214,7 @@ async function verify(name, browserType, options) {
 
     // These lazy routes have not been visited online in this fresh context.
     for (const [route, heading] of [
-      ['/coach', 'A plan with perspective.'],
+      ['/coach', 'Coaching'],
       ['/health', 'Your daily foundations'],
       ['/health?tab=mobility', 'A few minutes, done consistently.'],
       ['/health?tab=movement', 'Sitting and movement breaks'],
@@ -163,7 +222,7 @@ async function verify(name, browserType, options) {
       ['/progress', 'Exercise performance'],
       ['/schedule', 'Your training week'],
       ['/library', 'Exercise library'],
-      ['/train', 'Train with intention.'],
+      ['/train', 'Training'],
       ['/tools', 'Training toolkit.'],
     ]) {
       stage = `offline route ${route}`;
@@ -190,8 +249,8 @@ async function verify(name, browserType, options) {
   }
 }
 
-await verify('chromium-desktop', chromium, { viewport: { width: 1440, height: 1000 } });
-await verify('webkit-iphone13', webkit, devices['iPhone 13']);
+if (!webkitOnly) await verify('chromium-desktop', chromium, { viewport: { width: 1440, height: 1000 } });
+if (!chromiumOnly) await verify('webkit-iphone13', webkit, devices['iPhone 13']);
 await writeFile(path.join(output, 'report.json'), `${JSON.stringify(reports, null, 2)}\n`);
 console.log(`Report and screenshots: ${output}`);
 console.log(
