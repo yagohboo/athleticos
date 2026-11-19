@@ -2,7 +2,7 @@
 
 [Open and install AthleticOS](https://yagohboo.github.io/athleticos/)
 
-Version 3.3.0. A personal strength and athletic performance app. This repository contains its compiled static release. Hosting uses GitHub Pages; no paid services or app account are needed.
+Version 3.3.1. A personal strength and athletic performance app. This repository contains its compiled static release. Hosting uses GitHub Pages; no paid services or app account are needed.
 
 On iPhone, open the app in Safari, tap Share, then Add to Home Screen. Enable Open as Web App if offered. Launch once online and wait for Offline ready.
 
@@ -17,3 +17,5 @@ Workout records, photos and settings stay in your browser or installed app. They
 Version 3.2 adds personal setup for goals, experience, equipment and schedule. Each phone creates its own starting plan. Start workout opens the session directly, guided logging shows the current set first, and rest names what comes next. New profiles start without inherited body measurements or nutrition targets. Existing plans, workouts and advanced tools remain available.
 
 Version 3.3 gives Today a training journal layout with your workout, start or resume action and week in view. During a session, see your current exercise and set, open the exercise list with Plan, and follow the next set from the rest timer. The new light and dark themes work offline.
+
+Version 3.3.1 makes the original Planet Fitness routine and other saved plans available from Home and Train. Select Use original plan to open the four-day routine, or choose an edited plan from Saved plans. A missing plan selection can be recovered from saved workout history.
